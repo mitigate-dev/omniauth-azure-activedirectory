@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 As this is an unofficial fork, no actual Gems are released for any version.
 
-## [Unreleased]
+## [1.3.0] - 2026-09-15
 
 ### Added
 - Declare `base64` as a runtime dependency. Ruby 3.4 moved `base64` from the
@@ -21,7 +21,7 @@ As this is an unofficial fork, no actual Gems are released for any version.
 - Relax `omniauth` constraint to `>= 1.1, < 3`, adding OmniAuth 2
   support.
 - Update development dependencies `rake` (`~> 13.0`) and `webmock`
-  (~> 3.0`).
+  (`~> 3.0`).
 
 ### Fixed
 - Stub `:path` on the request double in the specs. OmniAuth 2 calls
