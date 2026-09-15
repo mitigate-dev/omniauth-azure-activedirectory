@@ -4,7 +4,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-As this is an unoficial fork, no actual Gems are released for any version.
+As this is an unofficial fork, no actual Gems are released for any version.
+
+## [Unreleased]
+
+### Added
+- Declare `base64` as a runtime dependency. Ruby 3.4 moved `base64` from the
+  default gems to the bundled gems, so under Bundler it is unavailable unless
+  declared. Without this, `jwt` 2.2.x fails to load entirely on Ruby 3.4.
+- Explicitly `require` the stdlib the strategy actually uses (`base64`, `json`,
+  `net/http`, `uri`). These were previously reached only via transitive requires
+  from `omniauth`/`jwt`.
+
+### Changed
+- Relax `jwt` constraint to `>= 2.2, < 3`.
+- Relax `omniauth` constraint to `>= 1.1, < 3`, adding OmniAuth 2
+  support.
+- Update development dependencies `rake` (`~> 13.0`) and `webmock`
+  (~> 3.0`).
+
+### Fixed
+- Stub `:path` on the request double in the specs. OmniAuth 2 calls
+  `request.path`, which the original 2015-era double did not respond to.
 
 ## [1.2.0] - 2020-03-19
 
