@@ -87,6 +87,20 @@ module OmniAuth
         strategy.options
       end
 
+      ##
+      # Optional logger, from the :nonce_logger option. Nonce failures are
+      # otherwise invisible
+      def logger
+        options.nonce_logger
+      end
+
+      def log(level, message)
+        return unless logger
+        logger.public_send(level, "[omniauth-azure-activedirectory] #{message}")
+      rescue StandardError
+        nil
+      end
+
       def session
         strategy.session
       end

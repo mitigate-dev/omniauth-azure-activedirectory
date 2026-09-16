@@ -40,31 +40,86 @@ module OmniAuth
     class CacheNonceStore < NonceStore
       KEY_PREFIX = 'omniauth-azure-activedirectory:nonce:'.freeze
 
+      ##
+      # Persists the nonce, converting ANY failure into one OmniAuth::Error.
+      #
+      # Two distinct failure shapes have to collapse into one: a store may
+      # return falsey, or it may raise. Which one you get depends on the host
+      # application's cache and how narrowly it rescues -- redis-activesupport
+      # rescues only Redis::BaseConnectionError (and re-raises even that when
+      # raise_errors? is set), while Rails' RedisCacheStore also swallows
+      # Redis::BaseError. So a Redis OOM raises straight through the first and
+      # is caught by the second.
+      #
+      # Without this, an OOM on one app surfaces as a bare Redis::CommandError
+      # that no `rescue_from OmniAuth::Error` will catch, and on the other as a
+      # clear message. The guarantee worth offering is that a nonce which was
+      # not stored always produces the same error, whatever the host configured.
       def store(nonce)
-        written = cache.write(cache_key(nonce), payload, expires_in: ttl)
+        # Computed outside the rescue: a bug in a subclass's #payload is not a
+        # cache failure and should not be reported as one.
+        data = payload
+        backend = cache
 
-        # Deliberately `unless written` rather than `written == false`: the
-        # truthy value is store-specific. redis-rails' :redis_store returns
-        # "OK" where Rails' own :redis_cache_store returns true, and an
-        # equality check against either would stop firing if the store is
-        # swapped. Neither raises on a dead backend, so this is the only
-        # signal available.
+        written =
+          begin
+            backend.write(cache_key(nonce), data, expires_in: ttl)
+          rescue StandardError => e
+            log(:error, "cache write raised #{e.class}: #{e.message}")
+            fail ::OmniAuth::Error, write_failure_message(backend, e)
+          end
+
+        # `unless written` rather than `written == false`: the truthy value is
+        # store-specific. redis-activesupport returns "OK" where Rails'
+        # RedisCacheStore returns true, and an equality check against either
+        # would stop firing if the store were swapped.
         unless written
-          fail ::OmniAuth::Error,
-               'Could not store the Azure AD login nonce. Azure AD sign-in ' \
-               "cannot work until the cache (#{cache.class}) is reachable."
+          log(:error, "cache write returned #{written.inspect}")
+          fail ::OmniAuth::Error, write_failure_message(backend)
         end
 
         nonce
       end
 
       def claim(nonce)
-        return false if nonce.nil? || nonce.to_s.empty?
+        if nonce.nil? || nonce.to_s.empty?
+          log(:warn, 'callback carried no nonce')
+          return false
+        end
 
-        stored = cache.read(cache_key(nonce))
-        return false if stored.nil?
+        backend = cache
 
-        cache.delete(cache_key(nonce))
+        stored =
+          begin
+            backend.read(cache_key(nonce))
+          rescue StandardError => e
+            # Distinct from a miss: the nonce may well have been valid. Saying
+            # so beats letting this surface as 'nonce did not match'.
+            log(:error, "cache read raised #{e.class}: #{e.message}")
+            fail ::OmniAuth::Error,
+                 'Could not read the Azure AD login nonce from the cache ' \
+                 "(#{backend.class}): #{e.class}: #{e.message}"
+          end
+
+        if stored.nil?
+          log(:warn, "nonce not claimable: expired, already used, or evicted (#{cache_key(nonce)})")
+          return false
+        end
+
+        begin
+          backend.delete(cache_key(nonce))
+        rescue StandardError => e
+          # Deliberately not fatal. The realistic trigger is failover to a
+          # read-only replica, where reads succeed and writes and deletes fail:
+          # failing closed there is a total login outage for the duration of the
+          # failover, while failing open widens the replay window to the TTL and
+          # still requires an attacker to hold a valid signed id_token. Certain
+          # and total availability loss versus conditional and bounded exposure.
+          # Note an OOM does not reach here -- Redis permits DEL under maxmemory
+          # because it frees memory.
+          log(:error, "cache delete raised #{e.class}: #{e.message}; nonce stays until it expires")
+        end
+
         on_claim(stored)
         true
       end
@@ -84,6 +139,12 @@ module OmniAuth
 
       def cache_key(nonce)
         "#{KEY_PREFIX}#{nonce}"
+      end
+
+      def write_failure_message(backend, error = nil)
+        detail = error ? "#{error.class}: #{error.message}" : 'the write was rejected'
+        'Could not store the Azure AD login nonce. Azure AD sign-in cannot ' \
+          "work until the cache (#{backend.class}) accepts writes -- #{detail}."
       end
     end
   end

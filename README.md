@@ -149,6 +149,16 @@ provider :azure_activedirectory, ENV['AAD_CLIENT_ID'], ENV['AAD_TENANT'],
          nonce_ttl: 900
 ```
 
+`nonce_store` also accepts a String or Symbol naming the class, resolved per
+request rather than when the provider is declared:
+
+```ruby
+nonce_store: 'AzureNonceStore'
+```
+
+Use that form when the provider is configured in an initializer and the store
+class lives somewhere autoloadable (anything under `app/`). 
+
 `nonce_cache` is any object responding to `#read`, `#write(key, value,
 expires_in:)` and `#delete` — `Rails.cache` satisfies this. The gem does not
 depend on Rails; the cache is injected. `nonce_ttl` is in seconds and only needs
@@ -162,10 +172,31 @@ write reports success. Rails applications commonly set
 `config.cache_store = :null_store` in development and test while configuring a
 real store only in production; check the environment you are testing in.
 
+#### Logging nonce failures
+
+A failed nonce reaches the user as `Returned nonce did not match.`, which does
+not say whether it expired, was already used, or the cache never answered. Pass a
+logger to get that distinction:
+
+```ruby
+nonce_logger: Rails.logger
+```
+
+Both stores log claim misses with the reason. `CacheNonceStore` additionally
+logs, and raises, when the cache rejects or fails a write .
+
 #### Carrying state across the callback
 
-Anything else the session cannot hold across the cross-site POST can travel with
-the nonce. Subclass the store and override `payload` and `on_claim`:
+Moving the nonce out of the session does not rescue everything else the session
+was carrying. Anything written before the request phase and read at the callback
+is lost for the same reason the nonce was.
+
+**If you use Devise, you are probably affected and may not know it.** The symptom
+is that the first login after a session is lost lands on the site root instead of
+the page the user asked for — clicking the same link again works.
+
+Carry it with the nonce instead. Subclass the store and override `payload` and
+`on_claim`:
 
 ```ruby
 class AzureNonceStore < OmniAuth::AzureActiveDirectory::CacheNonceStore
@@ -181,6 +212,10 @@ end
 
 Then pass `nonce_store: AzureNonceStore`.
 
+Each nonce carries its own snapshot, taken when it is stored rather than read
+when it is claimed, so concurrent logins in separate tabs do not cross payloads
+and cannot restore each other's destination.
+
 #### Writing your own store
 
 Subclass `OmniAuth::AzureActiveDirectory::NonceStore` and implement `store(nonce)`
@@ -190,11 +225,7 @@ a nonce that was never stored resurfaces at the callback as a nonce mismatch,
 which sends whoever debugs it towards the JWT rather than the storage.
 
 Nonces are one-time use — `claim` must remove the nonce so it cannot be claimed
-twice. Note that `CacheNonceStore` reads and then deletes, which is not atomic:
-two callbacks racing on the same nonce could both claim it. Closing that window
-needs a primitive the generic cache interface does not expose (Redis `GETDEL`
-or a Lua script); if you need it, implement `claim` against your backend
-directly.
+twice.
 
 ### Auth Hash
 

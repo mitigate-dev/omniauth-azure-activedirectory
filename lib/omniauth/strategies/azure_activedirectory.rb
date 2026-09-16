@@ -68,6 +68,12 @@ module OmniAuth
       # what lets several tabs authenticate concurrently.
       option :nonce_max_count, 10
 
+      # Optional logger for nonce failures, e.g. Rails.logger. Without it a
+      # claim miss is invisible: the user sees 'Returned nonce did not match'
+      # with nothing distinguishing an expired nonce from a replayed one from
+      # a cache that is not answering.
+      option :nonce_logger, nil
+
       # instead of hard coding client_id and tenant, you may pass a class that
       # determines these values at runtime to support multiple tenants
       option :tenant_provider, nil
@@ -269,14 +275,44 @@ module OmniAuth
       end
 
       ##
-      # The configured nonce store, defaulting to the session. Instantiated
-      # with the strategy, like :tenant_provider.
+      # The configured nonce store, defaulting to the session.
+      #
+      # Resolved per request rather than at configuration time, so the option
+      # may be given as a String or Symbol naming the class. That matters when
+      # the provider is declared in an initializer: a Class constant would have
+      # to be loaded before that initializer runs, which rules out anything
+      # autoloadable under app/. A String is resolved here, once the
+      # application is booted.
+      #
+      # Accepts:
+      #   a Class            - instantiated with the strategy, like tenant_provider
+      #   a String or Symbol - constant name, resolved at request time
+      #   anything callable  - called with the strategy; may return either of
+      #                        the above, or a ready-made store instance
       #
       # @return NonceStore
       def nonce_store
-        @nonce_store ||=
-          (options.nonce_store || AzureActiveDirectory::SessionNonceStore)
-          .new(self)
+        @nonce_store ||= build_nonce_store
+      end
+
+      def build_nonce_store
+        configured = options.nonce_store || AzureActiveDirectory::SessionNonceStore
+        configured = configured.call(self) if configured.respond_to?(:call)
+
+        if configured.is_a?(String) || configured.is_a?(Symbol)
+          configured = resolve_nonce_store_constant(configured)
+        end
+
+        return configured if configured.is_a?(AzureActiveDirectory::NonceStore)
+
+        configured.new(self)
+      end
+
+      def resolve_nonce_store_constant(name)
+        Object.const_get(name.to_s)
+      rescue NameError => e
+        fail ::OmniAuth::Error,
+             "nonce_store #{name.inspect} could not be resolved: #{e.message}"
       end
 
       ##

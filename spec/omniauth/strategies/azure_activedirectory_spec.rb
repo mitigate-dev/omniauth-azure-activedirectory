@@ -218,6 +218,57 @@ describe OmniAuth::Strategies::AzureActiveDirectory do
     end
   end
 
+  describe 'nonce_store resolution' do
+    let(:env) { { 'rack.session' => {} } }
+
+    def store_for(value)
+      described_class.new(app, client_id, tenant, nonce_store: value)
+                     .tap { |s| s.call!(env) }
+                     .send(:nonce_store)
+    end
+
+    it 'defaults to the session store' do
+      expect(store_for(nil))
+        .to be_a OmniAuth::AzureActiveDirectory::SessionNonceStore
+    end
+
+    it 'accepts a class' do
+      expect(store_for(OmniAuth::AzureActiveDirectory::CacheNonceStore))
+        .to be_a OmniAuth::AzureActiveDirectory::CacheNonceStore
+    end
+
+    # Resolving late is what lets the class live somewhere autoloadable: a
+    # provider declared in an initializer cannot reference a constant that the
+    # app has not defined yet.
+    it 'accepts a String naming the class, resolved per request' do
+      expect(store_for('OmniAuth::AzureActiveDirectory::CacheNonceStore'))
+        .to be_a OmniAuth::AzureActiveDirectory::CacheNonceStore
+    end
+
+    it 'accepts a Symbol' do
+      expect(store_for(:'OmniAuth::AzureActiveDirectory::CacheNonceStore'))
+        .to be_a OmniAuth::AzureActiveDirectory::CacheNonceStore
+    end
+
+    it 'accepts a callable returning a class' do
+      expect(store_for(-> (_strategy) { OmniAuth::AzureActiveDirectory::CacheNonceStore }))
+        .to be_a OmniAuth::AzureActiveDirectory::CacheNonceStore
+    end
+
+    it 'accepts a callable returning a ready-made store' do
+      built = nil
+      store = store_for(lambda do |strategy|
+        built = OmniAuth::AzureActiveDirectory::CacheNonceStore.new(strategy)
+      end)
+      expect(store).to be built
+    end
+
+    it 'names the option when the constant does not exist' do
+      expect { store_for('NoSuchNonceStore') }
+        .to raise_error(OmniAuth::Error, /NoSuchNonceStore.*could not be resolved/)
+    end
+  end
+
   describe '#request_phase' do
     let(:strategy) { described_class.new(app, client_id, tenant) }
     subject { strategy.request_phase }

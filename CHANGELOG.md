@@ -22,10 +22,27 @@ As this is an unofficial fork, no actual Gems are released for any version.
 - `nonce_cache` and `nonce_ttl` options for `CacheNonceStore`. The cache is any
   object responding to `#read`, `#write(key, value, expires_in:)` and
   `#delete`; the gem gains no Rails dependency.
+- `nonce_store` accepts a String or Symbol naming the class, or a callable,
+  resolved per request instead of when the provider is declared. A bare Class
+  constant must be loaded before the initializer that declares the provider,
+  which rules out anything autoloadable under `app/`.
 - `payload`/`on_claim` hooks so a store subclass can carry state across the
   callback that the session cannot hold.
+- `nonce_logger` option. Both stores log claim misses with the reason, which
+  the user-facing 'Returned nonce did not match' cannot convey.
 - README section on nonce storage, including the non-atomic claim in
   `CacheNonceStore` and when that matters.
+
+### Fixed
+- `CacheNonceStore` converts a raising cache into the same `OmniAuth::Error` it
+  raises for a rejected write, keeping the original as `cause`. Caches differ in
+  what they rescue: `redis-activesupport` rescues only
+  `Redis::BaseConnectionError` (and re-raises even that under `raise_errors?`),
+  while Rails' `RedisCacheStore` also swallows `Redis::BaseError`. A Redis OOM
+  therefore escaped the write guard entirely on some hosts and reached the
+  application as a bare `Redis::CommandError` that no `rescue_from
+  OmniAuth::Error` would catch. A failed cache read is also distinguished from a
+  nonce miss, and a failed delete no longer refuses an otherwise valid login.
 
 ### Changed
 - `new_nonce` and `check_nonce` delegate to the configured store instead of

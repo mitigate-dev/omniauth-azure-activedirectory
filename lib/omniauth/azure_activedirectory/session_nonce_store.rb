@@ -53,8 +53,23 @@ module OmniAuth
       end
 
       def claim(nonce)
-        return false unless session[SESSION_KEY]
-        return false unless session[SESSION_KEY].delete(nonce)
+        if nonce.nil? || nonce.to_s.empty?
+          log(:warn, 'callback carried no nonce')
+          return false
+        end
+
+        unless session[SESSION_KEY]
+          # The usual cause is the session not surviving the cross-site
+          # callback POST under SameSite=Lax; see CacheNonceStore.
+          log(:warn, 'no nonces in session at the callback')
+          return false
+        end
+
+        unless session[SESSION_KEY].delete(nonce)
+          log(:warn, 'nonce not in session: already used, or pushed out by nonce_max_count')
+          return false
+        end
+
         on_claim(payload)
         true
       end
