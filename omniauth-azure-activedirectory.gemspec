@@ -14,6 +14,8 @@ Gem::Specification.new do |s|
   s.files           = `git ls-files`.split("\n")
   s.require_paths   = ['lib']
 
+  s.required_ruby_version = '>= 2.4'
+
   s.add_runtime_dependency 'base64', '~> 0.2'
   s.add_runtime_dependency 'jwt', '>= 2.2', '< 3'
   s.add_runtime_dependency 'omniauth', '>= 1.1', '< 3'

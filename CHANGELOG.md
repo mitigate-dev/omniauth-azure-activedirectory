@@ -15,6 +15,12 @@ As this is an unofficial fork, no actual Gems are released for any version.
 - Explicitly `require` the stdlib the strategy actually uses (`base64`, `json`,
   `net/http`, `uri`). These were previously reached only via transitive requires
   from `omniauth`/`jwt`.
+- Declare `required_ruby_version = '>= 2.4'`. The floor was previously implicit;
+  `base64` imposes it, and it is the highest among the required dependencies.
+- README section on starting the request phase, covering the OmniAuth 2 POST-only
+  default, `omniauth-rails_csrf_protection`, the interstitial needed when a
+  framework redirects into the sign-in path, and why re-enabling GET reintroduces
+  CVE-2015-9284.
 
 ### Changed
 - Relax `jwt` constraint to `>= 2.2, < 3`.
