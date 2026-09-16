@@ -126,6 +126,76 @@ If you are supporting multiple OmniAuth providers, you will likely have somethin
 end
 ```
 
+### Nonce storage
+
+The strategy generates a nonce during the request phase and must find it again
+at the callback. By default it keeps nonces in the Rack session, capped at
+`nonce_max_count` (10) so that logins started in several tabs do not invalidate
+each other.
+
+**The session default does not work under `SameSite=Lax`.** Azure returns the
+`id_token` via `response_mode=form_post`, which is a cross-site POST, and a
+`SameSite=Lax` session cookie is not sent with it. The session is therefore
+empty at the callback, the nonce cannot be found, and every login fails with
+`Returned nonce did not match.`. The same applies across application servers
+without sticky sessions.
+
+Keep nonces in a shared cache instead:
+
+```ruby
+provider :azure_activedirectory, ENV['AAD_CLIENT_ID'], ENV['AAD_TENANT'],
+         nonce_store: OmniAuth::AzureActiveDirectory::CacheNonceStore,
+         nonce_cache: Rails.cache,
+         nonce_ttl: 900
+```
+
+`nonce_cache` is any object responding to `#read`, `#write(key, value,
+expires_in:)` and `#delete` — `Rails.cache` satisfies this. The gem does not
+depend on Rails; the cache is injected. `nonce_ttl` is in seconds and only needs
+to outlive one login round trip.
+
+The cache must be a real one. A no-op cache accepts the write and returns
+nothing on read, so the nonce cannot be claimed and every login fails at the
+callback with `Returned nonce did not match.` — the store cannot distinguish
+this from an expired nonce, and the write guard does not fire because a no-op
+write reports success. Rails applications commonly set
+`config.cache_store = :null_store` in development and test while configuring a
+real store only in production; check the environment you are testing in.
+
+#### Carrying state across the callback
+
+Anything else the session cannot hold across the cross-site POST can travel with
+the nonce. Subclass the store and override `payload` and `on_claim`:
+
+```ruby
+class AzureNonceStore < OmniAuth::AzureActiveDirectory::CacheNonceStore
+  def payload
+    { 'return_to' => strategy.session['user_return_to'] }
+  end
+
+  def on_claim(payload)
+    strategy.session['user_return_to'] = payload['return_to'] if payload['return_to']
+  end
+end
+```
+
+Then pass `nonce_store: AzureNonceStore`.
+
+#### Writing your own store
+
+Subclass `OmniAuth::AzureActiveDirectory::NonceStore` and implement `store(nonce)`
+and `claim(nonce)`. The class is instantiated with the strategy, so `strategy`,
+`options` and `session` are available. `store` must raise if it cannot persist:
+a nonce that was never stored resurfaces at the callback as a nonce mismatch,
+which sends whoever debugs it towards the JWT rather than the storage.
+
+Nonces are one-time use — `claim` must remove the nonce so it cannot be claimed
+twice. Note that `CacheNonceStore` reads and then deletes, which is not atomic:
+two callbacks racing on the same nonce could both claim it. Closing that window
+needs a primitive the generic cache interface does not expose (Redis `GETDEL`
+or a Lua script); if you need it, implement `claim` against your backend
+directly.
+
 ### Auth Hash
 
 OmniAuth AzureAD tries to be consistent with the auth hash schema recommended by OmniAuth. [https://github.com/intridea/omniauth/wiki/Auth-Hash-Schema](https://github.com/intridea/omniauth/wiki/Auth-Hash-Schema).

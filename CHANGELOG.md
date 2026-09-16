@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 As this is an unofficial fork, no actual Gems are released for any version.
 
+## [1.4.0] - 2026-09-16
+
+### Added
+- Pluggable nonce storage. `nonce_store` takes a class instantiated with the
+  strategy (mirroring `tenant_provider`), defaulting to
+  `SessionNonceStore` — the existing behaviour, session key and
+  `nonce_max_count` cap all unchanged.
+- `CacheNonceStore`, which keeps nonces in an injected cache rather than the
+  session. Azure returns the id_token via a cross-site `form_post`, and a
+  `SameSite=Lax` session cookie is not sent on a cross-site POST, so the
+  session-stored nonce is unreachable at the callback and every login fails
+  with 'Returned nonce did not match.'. Also fixes nonce loss across
+  application servers without sticky sessions.
+- `nonce_cache` and `nonce_ttl` options for `CacheNonceStore`. The cache is any
+  object responding to `#read`, `#write(key, value, expires_in:)` and
+  `#delete`; the gem gains no Rails dependency.
+- `payload`/`on_claim` hooks so a store subclass can carry state across the
+  callback that the session cannot hold.
+- README section on nonce storage, including the non-atomic claim in
+  `CacheNonceStore` and when that matters.
+
+### Changed
+- `new_nonce` and `check_nonce` delegate to the configured store instead of
+  manipulating the session directly. Behaviour under the default store is
+  unchanged; `check_nonce` now returns a boolean rather than the removed nonce.
+
 ## [1.3.0] - 2026-09-15
 
 ### Added
