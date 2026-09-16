@@ -21,4 +21,7 @@
 #-------------------------------------------------------------------------------
 
 require 'omniauth/azure_activedirectory/version'
+require 'omniauth/azure_activedirectory/nonce_store'
+require 'omniauth/azure_activedirectory/session_nonce_store'
+require 'omniauth/azure_activedirectory/cache_nonce_store'
 require 'omniauth/strategies/azure_activedirectory'
