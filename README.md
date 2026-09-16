@@ -183,7 +183,7 @@ nonce_logger: Rails.logger
 ```
 
 Both stores log claim misses with the reason. `CacheNonceStore` additionally
-logs, and raises, when the cache rejects or fails a write .
+logs, and raises, when the cache rejects or fails a write.
 
 #### Carrying state across the callback
 
