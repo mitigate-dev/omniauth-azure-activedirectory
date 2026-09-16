@@ -20,10 +20,14 @@
 # THE SOFTWARE.
 #-------------------------------------------------------------------------------
 
+require 'base64'
+require 'json'
 require 'jwt'
+require 'net/http'
 require 'omniauth'
 require 'openssl'
 require 'securerandom'
+require 'uri'
 
 module OmniAuth
   module Strategies

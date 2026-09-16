@@ -55,7 +55,63 @@ use OmniAuth::Builder do
 end
 ```
 
-When you want to authenticate the user, simply redirect them to `/auth/azureactivedirectory`. From there, OmniAuth will takeover. Once the user authenticates (or fails to authenticate), they will be redirected to `/auth/azureactivedirectory/callback` or `/auth/azureactivedirectory/failure`. The authentication result is available in `request.env['omniauth.auth']`.
+When you want to authenticate the user, send them to `/auth/azureactivedirectory`. From there, OmniAuth will takeover. Once the user authenticates (or fails to authenticate), they will be redirected to `/auth/azureactivedirectory/callback` or `/auth/azureactivedirectory/failure`. The authentication result is available in `request.env['omniauth.auth']`.
+
+**How you send them there depends on your OmniAuth version.** This gem supports
+`omniauth >= 1.1, < 3`, and the two majors differ on the request phase.
+
+### Starting the request phase
+
+On **OmniAuth 1.x**, the request phase accepts GET, so a plain link or redirect works:
+
+```ruby
+redirect_to '/auth/azureactivedirectory'
+```
+
+On **OmniAuth 2.x**, the request phase accepts **POST only**
+(`OmniAuth.config.allowed_request_methods` defaults to `[:post]`). A GET link or
+redirect no longer reaches the strategy, so the snippet above silently stops
+working. In Rails, add the CSRF protection middleware:
+
+```ruby
+# Gemfile
+gem 'omniauth-rails_csrf_protection'
+```
+
+and start authentication with a POST that carries the CSRF token:
+
+```erb
+<%= button_to 'Sign in with Azure AD', '/auth/azureactivedirectory', method: :post %>
+```
+
+If your application redirects unauthenticated users to a sign-in path, that path
+cannot point straight at the request phase either, since a 302 cannot produce a
+POST. Have it render a small interstitial that submits the form itself:
+
+```erb
+<%= form_with url: '/auth/azureactivedirectory', method: :post, id: 'aad-signin' do %>
+  <noscript><%= submit_tag 'Continue to sign in' %></noscript>
+<% end %>
+<script>document.getElementById('aad-signin').submit()</script>
+```
+
+The sample applications in `examples/` predate OmniAuth 2 and still start
+authentication with a GET link, so they run on OmniAuth 1.x only.
+
+#### Do not re-enable GET
+
+The quickest-looking fix is to put the old behaviour back:
+
+```ruby
+# Don't do this.
+OmniAuth.config.allowed_request_methods = %i[get post]
+```
+
+Restricting the request phase to POST is precisely how OmniAuth 2 fixes
+[CVE-2015-9284](https://nvd.nist.gov/vuln/detail/CVE-2015-9284), a request-phase
+CSRF vulnerability that lets an attacker link a victim's session to an account the
+attacker controls. Re-enabling GET silences the symptom and restores the
+vulnerability. Use a POST form instead.
 
 If you are supporting multiple OmniAuth providers, you will likely have something like this in your code:
 
