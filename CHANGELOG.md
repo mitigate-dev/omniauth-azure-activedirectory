@@ -30,8 +30,7 @@ As this is an unofficial fork, no actual Gems are released for any version.
   callback that the session cannot hold.
 - `nonce_logger` option. Both stores log claim misses with the reason, which
   the user-facing 'Returned nonce did not match' cannot convey.
-- README section on nonce storage, including the non-atomic claim in
-  `CacheNonceStore` and when that matters.
+- README section on nonce storage, including the non-atomic claim.
 
 ### Fixed
 - `CacheNonceStore` converts a raising cache into the same `OmniAuth::Error` it

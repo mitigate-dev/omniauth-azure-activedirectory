@@ -172,6 +172,13 @@ write reports success. Rails applications commonly set
 `config.cache_store = :null_store` in development and test while configuring a
 real store only in production; check the environment you are testing in.
 
+`claim` reads then deletes, and `ActiveSupport::Cache` has no atomic
+read-and-delete, so concurrent claims of the same nonce are not serialised. A
+failed delete is not fatal either — the login proceeds and the nonce lives until
+`nonce_ttl`. Treat it as defence in depth against replay rather than a hard
+guard; override `claim` with `GETDEL` or a Lua script if you need strict
+single-use.
+
 #### Logging nonce failures
 
 A failed nonce reaches the user as `Returned nonce did not match.`, which does
